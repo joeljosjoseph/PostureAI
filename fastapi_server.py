@@ -179,8 +179,8 @@ app = FastAPI(title="PostureAI API")
 app.add_middleware(
     CORSMiddleware,
     origins = [
-    "https://fitness-assistant-ai.vercel.app",
-]
+    "https://fitness-assistant-ai.vercel.app"
+],
     allow_origins=[
         "https://your-app.vercel.app",
         "https://*.vercel.app",  # For preview deployments
