@@ -178,11 +178,16 @@ app = FastAPI(title="PostureAI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Your Next.js URL
+    allow_origins=[
+        "https://your-app.vercel.app",
+        "https://*.vercel.app",  # For preview deployments
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # keep a simple in-memory session store for rep counters per client session
 SESSIONS = {}  # session_id -> dict { rep_counter, workout_name, target_reps, last_time, pose }
 # WARNING: in-memory store is ephemeral. Use redis for production.
