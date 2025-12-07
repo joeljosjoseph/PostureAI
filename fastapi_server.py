@@ -18,6 +18,8 @@ import uuid
 
 # Import diet predictor
 from diet_plan_predictor import DietPlanPredictor
+# Import hydration predictor
+from hydration_predictor import HydrationPredictor
 
 # -------------------------------------------------------------------
 # config
@@ -25,6 +27,7 @@ from diet_plan_predictor import DietPlanPredictor
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "model", "workout_pose_model.joblib")
 DIET_DATA_PATH = os.path.join(BASE_DIR, "diet_data.csv")
+HYDRATION_MODEL_DIR = os.path.join(BASE_DIR, "model")
 
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
@@ -114,6 +117,25 @@ def _load_diet_predictor():
     except Exception as e:
         print(f"Error loading diet predictor: {e}")
         _DIET_PREDICTOR = None
+
+
+# -------------------------------------------------------------------
+# Hydration Predictor Loader
+# -------------------------------------------------------------------
+_HYDRATION_PREDICTOR = None
+
+def _load_hydration_predictor():
+    """Load the hydration predictor model"""
+    global _HYDRATION_PREDICTOR
+    if _HYDRATION_PREDICTOR is not None:
+        return
+    try:
+        print("Loading hydration predictor model...")
+        _HYDRATION_PREDICTOR = HydrationPredictor(HYDRATION_MODEL_DIR)
+        print("Hydration predictor model loaded successfully!")
+    except Exception as e:
+        print(f"Error loading hydration predictor: {e}")
+        _HYDRATION_PREDICTOR = None
 
 
 # -------------------------------------------------------------------
@@ -218,6 +240,30 @@ class DietPlanResponse(BaseModel):
 
 
 # -------------------------------------------------------------------
+# Pydantic Models for Hydration
+# -------------------------------------------------------------------
+class HydrationRequest(BaseModel):
+    age: int
+    weight: float  # kg
+    height: float  # cm
+    humidity: float  # percentage
+    temperature: float  # celsius
+    workout_goal: str  # 'Build Muscle', 'Lose Weight', 'Get Fit', 'Improve Endurance'
+    season: str  # 'Spring', 'Summer', 'Autumn', 'Winter'
+
+class HydrationResponse(BaseModel):
+    age: int
+    weight: float
+    height: float
+    humidity: float
+    temperature: float
+    workout_goal: str
+    season: str
+    recommended_intake_ml: int
+    recommended_intake_liters: float
+
+
+# -------------------------------------------------------------------
 # FastAPI app & session store
 # -------------------------------------------------------------------
 app = FastAPI(title="PostureAI API")
@@ -247,6 +293,23 @@ async def startup_event():
     """Load models on startup"""
     _load_ml_model()
     _load_diet_predictor()
+    _load_hydration_predictor()
+
+
+# -------------------------------------------------------------------
+# Root Endpoint
+# -------------------------------------------------------------------
+@app.get("/")
+def root():
+    """API root endpoint"""
+    return {
+        "message": "PostureAI API with Diet Plan and Hydration Predictor",
+        "endpoints": {
+            "posture": ["/create_session", "/analyze", "/reset_session"],
+            "diet": ["/diet/info", "/diet/predict", "/diet/calculate-bmi"],
+            "hydration": ["/hydration/info", "/hydration/predict"]
+        }
+    }
 
 
 # -------------------------------------------------------------------
@@ -404,20 +467,8 @@ def reset_session(session_id: str = Form(...)):
 
 
 # -------------------------------------------------------------------
-# Diet Plan Endpoints (New)
+# Diet Plan Endpoints
 # -------------------------------------------------------------------
-@app.get("/")
-def root():
-    """API root endpoint"""
-    return {
-        "message": "PostureAI API with Diet Plan Predictor",
-        "endpoints": {
-            "posture": ["/create_session", "/analyze", "/reset_session"],
-            "diet": ["/diet/info", "/diet/predict", "/diet/calculate-bmi"]
-        }
-    }
-
-
 @app.get("/diet/info")
 def get_diet_info():
     """Get available options for diet plan prediction"""
@@ -488,6 +539,65 @@ async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(..
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# -------------------------------------------------------------------
+# Hydration Prediction Endpoints
+# -------------------------------------------------------------------
+@app.get("/hydration/info")
+def get_hydration_info():
+    """Get information about hydration predictor and valid input values"""
+    if _HYDRATION_PREDICTOR is None:
+        raise HTTPException(status_code=503, detail="Hydration predictor not available")
+    
+    return _HYDRATION_PREDICTOR.get_hydration_info()
+
+
+@app.post("/hydration/predict", response_model=HydrationResponse)
+async def predict_hydration(request: HydrationRequest):
+    """
+    Predict optimal daily water intake based on user characteristics and environment
+    
+    - **age**: Age in years (18-65)
+    - **weight**: Weight in kilograms (50-100)
+    - **height**: Height in centimeters (150-195)
+    - **humidity**: Humidity percentage (30-90)
+    - **temperature**: Temperature in Celsius (10-40)
+    - **workout_goal**: One of: Build Muscle, Lose Weight, Get Fit, Improve Endurance
+    - **season**: One of: Spring, Summer, Autumn, Winter
+    """
+    if _HYDRATION_PREDICTOR is None:
+        raise HTTPException(status_code=503, detail="Hydration predictor not available")
+    
+    try:
+        # Get prediction
+        intake_ml = _HYDRATION_PREDICTOR.predict_hydration(
+            age=request.age,
+            weight=request.weight,
+            height=request.height,
+            humidity=request.humidity,
+            temperature=request.temperature,
+            workout_goal=request.workout_goal,
+            season=request.season
+        )
+        
+        intake_liters = round(intake_ml / 1000, 2)
+        
+        return HydrationResponse(
+            age=request.age,
+            weight=request.weight,
+            height=request.height,
+            humidity=request.humidity,
+            temperature=request.temperature,
+            workout_goal=request.workout_goal,
+            season=request.season,
+            recommended_intake_ml=intake_ml,
+            recommended_intake_liters=intake_liters
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
