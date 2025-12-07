@@ -27,7 +27,7 @@ from hydration_predictor import HydrationPredictor
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "model", "workout_pose_model.joblib")
 DIET_DATA_PATH = os.path.join(BASE_DIR, "diet_data.csv")
-HYDRATION_MODEL_DIR = os.path.join(BASE_DIR, "model", "hydration_model.pkl")
+HYDRATION_MODEL_DIR = os.path.join(BASE_DIR, "model")
 
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
