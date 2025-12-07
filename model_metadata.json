@@ -1,0 +1,31 @@
+{
+  "model_type": "Random Forest",
+  "rmse": 39.70821527531107,
+  "mae": 37.67115369352855,
+  "r2_score": 0.97454187898796,
+  "feature_columns": [
+    "age",
+    "weight",
+    "height",
+    "humidity",
+    "temperature",
+    "workout_type_encoded",
+    "workout_duration",
+    "season_encoded",
+    "bmi",
+    "temp_humidity_index",
+    "workout_intensity"
+  ],
+  "workout_type_mapping": {
+    "Build Muscle": 0,
+    "Get Fit": 1,
+    "Improve Endurance": 2,
+    "Lose Weight": 3
+  },
+  "season_mapping": {
+    "Autumn": 0,
+    "Spring": 1,
+    "Summer": 2,
+    "Winter": 3
+  }
+}
