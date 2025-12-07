@@ -341,7 +341,8 @@ async def analyze(file: UploadFile = File(...),
                   session_id: Optional[str] = Form(None),
                   workout_name: Optional[str] = Form(None),
                   mode: Optional[str] = Form(None),
-                  target_reps: Optional[int] = Form(None)):
+                  target_reps: Optional[int] = Form(None),
+                  return_image: Optional[bool] = Form(True)):
     """
     Expects a multipart/form-data POST with:
       - file: image bytes (jpeg/png)
@@ -409,10 +410,29 @@ async def analyze(file: UploadFile = File(...),
     angle = None
     reps = session["rep_counter"].reps
     calories = calories_from_reps(reps)
+    
+    
 
     # First try ML auto-detect if requested
     use_auto = (mode == "auto") or (session.get("mode") == "auto")
-    if landmarks:
+    annotated_frame = None
+    if return_image and landmarks:
+        # Draw the pose landmarks
+        mp_drawing.draw_landmarks(
+            frame,
+            landmarks,
+            mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing.DrawingSpec(
+                color=(0, 255, 0), thickness=2, circle_radius=3
+            ),
+            connection_drawing_spec=mp_drawing.DrawingSpec(
+                color=(255, 255, 255), thickness=2
+            )
+        )
+        
+        # Encode frame as JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        annotated_frame = buffer.tobytes()
         if use_auto:
             try:
                 detected_label = ml_predict_from_landmarks(landmarks) or ""
@@ -447,6 +467,11 @@ async def analyze(file: UploadFile = File(...),
         "fps": session.get("fps", 0.0),
         "session_id": session_id,
     }
+    # Return image as base64 or bytes
+    if return_image and annotated_frame:
+        import base64
+        response["annotated_image"] = base64.b64encode(annotated_frame).decode('utf-8')
+    
 
     # check target
     if session.get("target_reps", 0) > 0 and reps >= session.get("target_reps", 0):
