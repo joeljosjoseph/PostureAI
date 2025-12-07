@@ -11,16 +11,20 @@ import numpy as np
 import cv2
 import joblib
 import mediapipe as mp
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
+
+# Import diet predictor
+from diet_plan_predictor import DietPlanPredictor
 
 # -------------------------------------------------------------------
 # config
 # -------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "model", "workout_pose_model.joblib")
+DIET_DATA_PATH = os.path.join(BASE_DIR, "diet_data.csv")
 
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
@@ -87,6 +91,29 @@ def ml_predict_from_landmarks(landmarks):
     else:
         label = str(pred)
     return label
+
+
+# -------------------------------------------------------------------
+# Diet Predictor Loader
+# -------------------------------------------------------------------
+_DIET_PREDICTOR = None
+
+def _load_diet_predictor():
+    """Load and train the diet predictor model"""
+    global _DIET_PREDICTOR
+    if _DIET_PREDICTOR is not None:
+        return
+    if not os.path.exists(DIET_DATA_PATH):
+        print("Diet data CSV not found at:", DIET_DATA_PATH)
+        return
+    try:
+        print("Loading diet predictor model...")
+        _DIET_PREDICTOR = DietPlanPredictor(DIET_DATA_PATH)
+        _DIET_PREDICTOR.train_models()
+        print("Diet predictor model loaded successfully!")
+    except Exception as e:
+        print(f"Error loading diet predictor: {e}")
+        _DIET_PREDICTOR = None
 
 
 # -------------------------------------------------------------------
@@ -172,6 +199,25 @@ def get_form_message(exercise_name, angle):
 
 
 # -------------------------------------------------------------------
+# Pydantic Models for Diet Plan
+# -------------------------------------------------------------------
+class DietPlanRequest(BaseModel):
+    gender: str
+    goal: str
+    weight_kg: float
+    height_cm: float
+
+class DietPlanResponse(BaseModel):
+    gender: str
+    goal: str
+    weight_kg: float
+    height_cm: float
+    bmi: float
+    bmi_category: str
+    meal_plan: str
+
+
+# -------------------------------------------------------------------
 # FastAPI app & session store
 # -------------------------------------------------------------------
 app = FastAPI(title="PostureAI API")
@@ -193,6 +239,19 @@ SESSIONS = {}  # session_id -> dict { rep_counter, workout_name, target_reps, la
 # WARNING: in-memory store is ephemeral. Use redis for production.
 
 
+# -------------------------------------------------------------------
+# Startup Event
+# -------------------------------------------------------------------
+@app.on_event("startup")
+async def startup_event():
+    """Load models on startup"""
+    _load_ml_model()
+    _load_diet_predictor()
+
+
+# -------------------------------------------------------------------
+# Posture Detection Endpoints (Original)
+# -------------------------------------------------------------------
 @app.post("/create_session")
 def create_session(workout_name: Optional[str] = Form("Manual"),
                    mode: Optional[str] = Form("manual"),
@@ -342,3 +401,93 @@ def reset_session(session_id: str = Form(...)):
         SESSIONS[session_id]["last_time"] = time.time()
         return {"ok": True}
     return {"ok": False, "error": "session not found"}
+
+
+# -------------------------------------------------------------------
+# Diet Plan Endpoints (New)
+# -------------------------------------------------------------------
+@app.get("/")
+def root():
+    """API root endpoint"""
+    return {
+        "message": "PostureAI API with Diet Plan Predictor",
+        "endpoints": {
+            "posture": ["/create_session", "/analyze", "/reset_session"],
+            "diet": ["/diet/info", "/diet/predict", "/diet/calculate-bmi"]
+        }
+    }
+
+
+@app.get("/diet/info")
+def get_diet_info():
+    """Get available options for diet plan prediction"""
+    if _DIET_PREDICTOR is None:
+        raise HTTPException(status_code=503, detail="Diet predictor not available")
+    
+    return {
+        "genders": _DIET_PREDICTOR.get_valid_values(_DIET_PREDICTOR.gender_col),
+        "goals": _DIET_PREDICTOR.get_valid_values(_DIET_PREDICTOR.goal_col),
+        "bmi_categories": _DIET_PREDICTOR.get_valid_values(_DIET_PREDICTOR.bmi_col)
+    }
+
+
+@app.post("/diet/predict", response_model=DietPlanResponse)
+async def predict_diet_plan(request: DietPlanRequest):
+    """
+    Predict diet plan based on user characteristics
+    
+    - **gender**: Male or Female
+    - **goal**: Build Muscle, Lose Weight, Get Fit, or Improve Endurance
+    - **weight_kg**: Weight in kilograms
+    - **height_cm**: Height in centimeters
+    """
+    if _DIET_PREDICTOR is None:
+        raise HTTPException(status_code=503, detail="Diet predictor not available")
+    
+    try:
+        # Calculate BMI
+        bmi, bmi_category = _DIET_PREDICTOR.calculate_bmi(request.weight_kg, request.height_cm)
+        
+        # Get prediction
+        meal_plan = _DIET_PREDICTOR.predict_diet_plan(
+            gender=request.gender,
+            goal=request.goal,
+            bmi_category=bmi_category
+        )
+        
+        return DietPlanResponse(
+            gender=request.gender,
+            goal=request.goal,
+            weight_kg=request.weight_kg,
+            height_cm=request.height_cm,
+            bmi=round(bmi, 1),
+            bmi_category=bmi_category,
+            meal_plan=meal_plan
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+
+@app.post("/diet/calculate-bmi")
+async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(...)):
+    """Calculate BMI from weight and height"""
+    if _DIET_PREDICTOR is None:
+        raise HTTPException(status_code=503, detail="Diet predictor not available")
+    
+    try:
+        bmi, bmi_category = _DIET_PREDICTOR.calculate_bmi(weight_kg, height_cm)
+        return {
+            "weight_kg": weight_kg,
+            "height_cm": height_cm,
+            "bmi": round(bmi, 1),
+            "bmi_category": bmi_category
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
