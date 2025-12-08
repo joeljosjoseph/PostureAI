@@ -341,8 +341,7 @@ async def analyze(file: UploadFile = File(...),
                   session_id: Optional[str] = Form(None),
                   workout_name: Optional[str] = Form(None),
                   mode: Optional[str] = Form(None),
-                  target_reps: Optional[int] = Form(None),
-                  return_keypoints: Optional[bool] = Form(False)):
+                  target_reps: Optional[int] = Form(None)):
     """
     Expects a multipart/form-data POST with:
       - file: image bytes (jpeg/png)
@@ -410,23 +409,10 @@ async def analyze(file: UploadFile = File(...),
     angle = None
     reps = session["rep_counter"].reps
     calories = calories_from_reps(reps)
-    
-    result = pose.process(rgb)
-    landmarks = result.pose_landmarks
 
     # First try ML auto-detect if requested
     use_auto = (mode == "auto") or (session.get("mode") == "auto")
-    keypoints_data = None
-    if return_keypoints and landmarks:
-        keypoints_data = []
-        for idx, landmark in enumerate(landmarks.landmark):
-            keypoints_data.append({
-                "index": idx,
-                "x": landmark.x * w,  # Convert to pixel coordinates
-                "y": landmark.y * h,
-                "z": landmark.z,
-                "visibility": landmark.visibility
-            })
+    if landmarks:
         if use_auto:
             try:
                 detected_label = ml_predict_from_landmarks(landmarks) or ""
@@ -461,13 +447,7 @@ async def analyze(file: UploadFile = File(...),
         "fps": session.get("fps", 0.0),
         "session_id": session_id,
     }
-    
-    # NEW: Add keypoints to response
-    if keypoints_data:
-        response["keypoints"] = keypoints_data
-        response["image_width"] = w
-        response["image_height"] = h
-    
+
     # check target
     if session.get("target_reps", 0) > 0 and reps >= session.get("target_reps", 0):
         response["done_by_target"] = True
