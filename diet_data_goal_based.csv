@@ -1,0 +1,49 @@
+Gender,Weight (kg),Height (cm),Goal,BMI Category,Meal Plan
+Male,70,178,Build Muscle,Normal,Lean Muscle Gain Plan
+Female,58,165,Build Muscle,Normal,Lean Muscle Gain Plan
+Male,82,183,Build Muscle,Normal,Mass Bulking Plan
+Female,62,170,Build Muscle,Normal,Lean Muscle Gain Plan
+Male,65,175,Build Muscle,Underweight,Mass Bulking Plan
+Female,48,160,Build Muscle,Underweight,Mass Bulking Plan
+Male,68,170,Build Muscle,Normal,Mass Bulking Plan
+Female,54,163,Build Muscle,Normal,Lean Muscle Gain Plan
+Male,76,181,Build Muscle,Normal,Mass Bulking Plan
+Female,60,166,Build Muscle,Normal,Lean Muscle Gain Plan
+Male,73,176,Build Muscle,Normal,Mass Bulking Plan
+Female,56,164,Build Muscle,Normal,Lean Muscle Gain Plan
+Male,95,175,Lose Weight,Overweight,Moderate Weight Loss Plan
+Female,75,160,Lose Weight,Overweight,Aggressive Weight Loss Plan
+Male,110,180,Lose Weight,Obese,Moderate Weight Loss Plan
+Female,88,165,Lose Weight,Obese,Aggressive Weight Loss Plan
+Male,78,172,Lose Weight,Normal,Aggressive Weight Loss Plan
+Female,68,158,Lose Weight,Normal,Aggressive Weight Loss Plan
+Male,102,182,Lose Weight,Obese,Aggressive Weight Loss Plan
+Female,82,168,Lose Weight,Overweight,Aggressive Weight Loss Plan
+Male,92,179,Lose Weight,Overweight,Aggressive Weight Loss Plan
+Female,71,161,Lose Weight,Normal,Aggressive Weight Loss Plan
+Male,86,174,Lose Weight,Overweight,Aggressive Weight Loss Plan
+Female,79,163,Lose Weight,Overweight,Aggressive Weight Loss Plan
+Male,75,175,Get Fit,Normal,Balanced Maintenance Plan
+Female,60,163,Get Fit,Normal,Balanced Maintenance Plan
+Male,80,180,Get Fit,Normal,Balanced Maintenance Plan
+Female,55,158,Get Fit,Normal,Balanced Maintenance Plan
+Male,78,178,Get Fit,Normal,Balanced Maintenance Plan
+Female,57,161,Get Fit,Normal,Balanced Maintenance Plan
+Male,83,183,Get Fit,Normal,Balanced Maintenance Plan
+Female,62,165,Get Fit,Normal,Balanced Maintenance Plan
+Male,72,173,Get Fit,Normal,Balanced Maintenance Plan
+Female,58,160,Get Fit,Normal,Balanced Maintenance Plan
+Male,76,177,Get Fit,Normal,Balanced Maintenance Plan
+Female,64,167,Get Fit,Normal,Balanced Maintenance Plan
+Male,68,173,Improve Endurance,Normal,Moderate Endurance Plan
+Female,56,162,Improve Endurance,Normal,Moderate Endurance Plan
+Male,72,177,Improve Endurance,Normal,High Endurance Training Plan
+Female,59,168,Improve Endurance,Normal,Moderate Endurance Plan
+Male,70,175,Improve Endurance,Normal,Moderate Endurance Plan
+Female,54,160,Improve Endurance,Normal,Moderate Endurance Plan
+Male,74,179,Improve Endurance,Normal,High Endurance Training Plan
+Female,58,164,Improve Endurance,Normal,Moderate Endurance Plan
+Male,66,171,Improve Endurance,Normal,Moderate Endurance Plan
+Female,61,166,Improve Endurance,Normal,Moderate Endurance Plan
+Male,77,180,Improve Endurance,Normal,High Endurance Training Plan
+Female,57,163,Improve Endurance,Normal,Moderate Endurance Plan

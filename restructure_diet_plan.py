@@ -48,7 +48,7 @@ class DietPlanPredictor:
     def _categorize_by_goal_alignment(self, row):
         """
         Categorize meal plan based on Goal + BMI Category + Calories
-        SIMPLIFIED for small datasets - creates fewer categories
+        This creates logical categories that align with user intentions
         """
         goal = str(row[self.goal_col])
         bmi_cat = str(row[self.bmi_col])
@@ -56,33 +56,55 @@ class DietPlanPredictor:
         calories = self._extract_total_calories(meal_plan)
         protein = self._extract_protein(meal_plan)
         
-        # Weight Loss plans (combine into one category)
+        # Weight Loss plans
         if 'Lose Weight' in goal or 'lose weight' in goal:
-            return "Weight Loss Plan"
+            if calories < 1500:
+                return "Aggressive Weight Loss (1200-1500 cal)"
+            else:
+                return "Moderate Weight Loss (1500-1800 cal)"
         
-        # Muscle Building plans - simplified to 3 categories
+        # Muscle Building plans - consider BMI
         elif 'Build Muscle' in goal or 'build muscle' in goal or 'Gain Muscle' in goal:
-            if bmi_cat == 'Underweight' or calories > 3200:
-                return "High Calorie Muscle Gain (3200+ cal)"
-            elif calories > 2500:
-                return "Muscle Gain Plan (2500-3200 cal)"
+            if bmi_cat == 'Underweight':
+                # Underweight needs more calories to build
+                return "Mass Gain for Underweight (3500+ cal, High Protein)"
+            elif calories > 3200:
+                return "Aggressive Bulking (3200+ cal, Very High Protein)"
+            elif calories > 2700:
+                return "Lean Muscle Gain (2700-3200 cal, High Protein)"
             else:
-                return "Lean Muscle Plan (2000-2500 cal)"
+                return "Muscle Maintenance (2200-2700 cal, Moderate Protein)"
         
-        # Maintenance/General Fitness (combine)
+        # Maintenance/General Fitness
         elif 'Maintain' in goal or 'maintain' in goal or 'Get Fit' in goal:
-            return "General Fitness & Maintenance"
-        
-        # Endurance/Athletic (combine)
-        elif 'Endurance' in goal or 'endurance' in goal or 'Athletic' in goal or 'Improve Endurance' in goal:
-            return "Endurance Training Plan"
-        
-        # Default fallback
-        else:
-            if calories > 2500:
-                return "High Calorie Plan"
+            if bmi_cat in ['Overweight', 'Obese']:
+                return "Fitness with Weight Management (1800-2200 cal)"
+            elif calories < 2000:
+                return "Light Fitness Plan (1600-2000 cal)"
+            elif calories > 2400:
+                return "Active Fitness Plan (2400-2800 cal)"
             else:
-                return "Balanced Plan"
+                return "Balanced Maintenance (2000-2400 cal)"
+        
+        # Endurance/Athletic
+        elif 'Endurance' in goal or 'endurance' in goal or 'Athletic' in goal or 'Improve Endurance' in goal:
+            if calories > 2800:
+                return "High Endurance Training (2800+ cal)"
+            else:
+                return "Moderate Endurance (2200-2800 cal)"
+        
+        # Default fallback based on calories and BMI
+        else:
+            if bmi_cat == 'Underweight' and calories > 2500:
+                return "Weight Gain Plan (2500+ cal)"
+            elif bmi_cat in ['Overweight', 'Obese']:
+                return "Weight Management Plan (1600-2000 cal)"
+            elif calories < 1600:
+                return "Low Calorie Plan (1200-1600 cal)"
+            elif calories > 2500:
+                return "High Calorie Plan (2500+ cal)"
+            else:
+                return "Standard Balanced Plan (1600-2500 cal)"
     
     def _load_and_preprocess_data(self):
         """Load CSV and create categorized meal plans"""
@@ -149,23 +171,10 @@ class DietPlanPredictor:
         else:
             y = self.encoders[self.meal_col].transform(y)
         
-        # Split data with stratification (only if enough samples)
-        n_classes = len(np.unique(y))
-        test_size = 0.2
-        
-        # Check if we have enough samples for stratification
-        if len(X) < n_classes * 5:
-            # Too few samples - use smaller test size and no stratification
-            test_size = max(0.15, 2 / len(X))  # At least 2 samples or 15%
-            print(f"   ⚠️  Small dataset detected ({len(X)} samples, {n_classes} classes)")
-            print(f"   Using test_size={test_size:.2f} without stratification")
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42
-            )
-        else:
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42, stratify=y
-            )
+        # Split data with stratification
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
         
         print(f"   • Training set: {len(X_train)} samples")
         print(f"   • Test set: {len(X_test)} samples")
@@ -241,7 +250,7 @@ class DietPlanPredictor:
     
     def predict_diet_plan(self, gender, goal, bmi_category):
         """
-        Predict diet plan category AND return a sample detailed meal plan
+        Predict diet plan category
         
         Args:
             gender: 'Male' or 'Female'
@@ -249,12 +258,7 @@ class DietPlanPredictor:
             bmi_category: 'Underweight', 'Normal', 'Overweight', or 'Obese'
         
         Returns:
-            dict: {
-                'category': str (predicted category),
-                'meal_plan': str (detailed meal plan),
-                'calories': int,
-                'protein': int
-            }
+            str: Predicted meal plan category
         """
         if self.model is None:
             raise ValueError("Model not trained. Call train_models() first.")
@@ -282,67 +286,11 @@ class DietPlanPredictor:
         for col in [self.gender_col, self.goal_col, self.bmi_col]:
             input_data[col] = self.encoders[col].transform(input_data[col])
         
-        # Predict category
+        # Predict
         prediction_encoded = self.model.predict(input_data)[0]
-        predicted_category = self.encoders[self.meal_col].inverse_transform([prediction_encoded])[0]
+        prediction = self.encoders[self.meal_col].inverse_transform([prediction_encoded])[0]
         
-        # Get a sample meal plan from the dataset that matches this category
-        matching_plans = self.df[
-            (self.df[self.meal_col] == predicted_category) &
-            (self.df[self.gender_col] == gender)
-        ]
-        
-        # If no exact gender match, try any gender
-        if len(matching_plans) == 0:
-            matching_plans = self.df[self.df[self.meal_col] == predicted_category]
-        
-        # Get a random sample from matching plans
-        if len(matching_plans) > 0:
-            # Get the original meal plan before categorization
-            # We need to find it in the original data
-            sample_idx = matching_plans.sample(1, random_state=42).index[0]
-            
-            # Load original data to get full meal plan
-            original_df = pd.read_csv(self.csv_path)
-            meal_plan_full = original_df.iloc[sample_idx]['Meal Plan']
-            
-            # Extract calories and protein
-            calories = self._extract_total_calories(meal_plan_full)
-            protein = self._extract_protein(meal_plan_full)
-            
-            return {
-                'category': predicted_category,
-                'meal_plan': meal_plan_full,
-                'calories': calories,
-                'protein': protein
-            }
-        else:
-            # Fallback - generate a basic plan based on category
-            return self._generate_fallback_plan(predicted_category, gender)
-    
-    def _generate_fallback_plan(self, category, gender):
-        """Generate a basic meal plan if no matching sample found"""
-        # This is a fallback - ideally we always find a match in the dataset
-        calorie_targets = {
-            "Weight Loss Plan": 1500,
-            "High Calorie Muscle Gain (3200+ cal)": 3500,
-            "Muscle Gain Plan (2500-3200 cal)": 2800,
-            "Lean Muscle Plan (2000-2500 cal)": 2200,
-            "General Fitness & Maintenance": 2200,
-            "Endurance Training Plan": 2600,
-            "High Calorie Plan": 2800,
-            "Balanced Plan": 2000
-        }
-        
-        cal = calorie_targets.get(category, 2000)
-        protein = int(cal * 0.3 / 4)  # 30% of calories from protein
-        
-        return {
-            'category': category,
-            'meal_plan': f"Customized {category} - Target: {cal} calories, {protein}g protein per day. (Detailed meal plan to be customized)",
-            'calories': cal,
-            'protein': protein
-        }
+        return prediction
     
     def get_valid_values(self, column):
         """Get valid values for a column"""
@@ -418,13 +366,11 @@ if __name__ == "__main__":
     
     for i, case in enumerate(test_cases, 1):
         bmi, bmi_cat = predictor.calculate_bmi(case['weight'], case['height'])
-        result = predictor.predict_diet_plan(case['gender'], case['goal'], bmi_cat)
+        prediction = predictor.predict_diet_plan(case['gender'], case['goal'], bmi_cat)
         
         print(f"\n{i}. {case['gender']}, {case['weight']}kg, {case['height']}cm, Goal: {case['goal']}")
         print(f"   BMI: {bmi:.1f} ({bmi_cat})")
-        print(f"   → Category: {result['category']}")
-        print(f"   → Calories: {result['calories']} cal | Protein: {result['protein']}g")
-        print(f"   → Meal Plan: {result['meal_plan'][:100]}...")  # Show first 100 chars
+        print(f"   → Predicted Plan: {prediction}")
     
     print("\n" + "=" * 70)
     print("✅ Diet predictor ready for FastAPI integration!")

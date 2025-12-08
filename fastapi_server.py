@@ -223,6 +223,7 @@ def get_form_message(exercise_name, angle):
 # -------------------------------------------------------------------
 # Pydantic Models for Diet Plan
 # -------------------------------------------------------------------
+# Updated Pydantic Models for Diet Plan
 class DietPlanRequest(BaseModel):
     gender: str
     goal: str
@@ -236,7 +237,10 @@ class DietPlanResponse(BaseModel):
     height_cm: float
     bmi: float
     bmi_category: str
-    meal_plan: str
+    meal_plan_category: str
+    meal_plan_details: str
+    calories: int
+    protein: int
 
 
 # -------------------------------------------------------------------
@@ -482,6 +486,7 @@ def get_diet_info():
     }
 
 
+# Updated Diet Plan Prediction Endpoint
 @app.post("/diet/predict", response_model=DietPlanResponse)
 async def predict_diet_plan(request: DietPlanRequest):
     """
@@ -491,6 +496,8 @@ async def predict_diet_plan(request: DietPlanRequest):
     - **goal**: Build Muscle, Lose Weight, Get Fit, or Improve Endurance
     - **weight_kg**: Weight in kilograms
     - **height_cm**: Height in centimeters
+    
+    Returns detailed meal plan with breakdown
     """
     if _DIET_PREDICTOR is None:
         raise HTTPException(status_code=503, detail="Diet predictor not available")
@@ -499,8 +506,8 @@ async def predict_diet_plan(request: DietPlanRequest):
         # Calculate BMI
         bmi, bmi_category = _DIET_PREDICTOR.calculate_bmi(request.weight_kg, request.height_cm)
         
-        # Get prediction
-        meal_plan = _DIET_PREDICTOR.predict_diet_plan(
+        # Get prediction with full meal plan
+        result = _DIET_PREDICTOR.predict_diet_plan(
             gender=request.gender,
             goal=request.goal,
             bmi_category=bmi_category
@@ -513,7 +520,10 @@ async def predict_diet_plan(request: DietPlanRequest):
             height_cm=request.height_cm,
             bmi=round(bmi, 1),
             bmi_category=bmi_category,
-            meal_plan=meal_plan
+            meal_plan_category=result['category'],
+            meal_plan_details=result['meal_plan'],
+            calories=result['calories'],
+            protein=result['protein']
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
