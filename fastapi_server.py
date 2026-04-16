@@ -20,6 +20,9 @@ import uuid
 from diet_plan_predictor import DietPlanPredictor
 # Import hydration predictor
 from hydration_predictor import HydrationPredictor
+from _bmi import bmi_category as classify_bmi
+from diet_model import predict_gym_plan
+from fridge_model import detect_items_from_upload, get_fridge_model_path
 
 # -------------------------------------------------------------------
 # config
@@ -244,6 +247,29 @@ class DietPlanResponse(BaseModel):
 
 
 # -------------------------------------------------------------------
+# Pydantic Models for Gym Plan
+# -------------------------------------------------------------------
+class GymPlanRequest(BaseModel):
+    gender: str
+    goal: str
+    weight_kg: float
+    height_cm: float
+
+
+class GymPlanResponse(BaseModel):
+    gender: str
+    goal: str
+    weight_kg: float
+    height_cm: float
+    bmi: float
+    bmi_category: str
+    exercise_schedule: str
+    meal_plan_focus: str
+    csv_goal: str
+    csv_bmi_category: str
+
+
+# -------------------------------------------------------------------
 # Pydantic Models for Hydration
 # -------------------------------------------------------------------
 class HydrationRequest(BaseModel):
@@ -311,6 +337,8 @@ def root():
         "endpoints": {
             "posture": ["/create_session", "/analyze", "/reset_session"],
             "diet": ["/diet/info", "/diet/predict", "/diet/calculate-bmi"],
+            "gym_plan": ["/gym-plan/predict"],
+            "fridge": ["/fridge/info", "/fridge/detect"],
             "hydration": ["/hydration/info", "/hydration/predict"]
         }
     }
@@ -531,6 +559,40 @@ async def predict_diet_plan(request: DietPlanRequest):
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 
+@app.post("/gym-plan/predict", response_model=GymPlanResponse)
+async def predict_gym_plan_endpoint(request: GymPlanRequest):
+    """Predict a gym plan from the moved root-level random forest model."""
+    try:
+        result = predict_gym_plan(
+            gender=request.gender,
+            goal=request.goal,
+            weight_kg=request.weight_kg,
+            height_cm=request.height_cm,
+        )
+        if result is None:
+            raise HTTPException(status_code=503, detail="Gym plan model not available")
+
+        bmi = result["bmi_used"]
+        bmi_category = classify_bmi(bmi)
+
+        return GymPlanResponse(
+            gender=request.gender,
+            goal=request.goal,
+            weight_kg=request.weight_kg,
+            height_cm=request.height_cm,
+            bmi=round(bmi, 1),
+            bmi_category=bmi_category,
+            exercise_schedule=result["exercise_schedule"],
+            meal_plan_focus=result["meal_plan_focus"],
+            csv_goal=result["csv_goal"],
+            csv_bmi_category=result["csv_bmi_category"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+
 @app.post("/diet/calculate-bmi")
 async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(...)):
     """Calculate BMI from weight and height"""
@@ -547,6 +609,37 @@ async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(..
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# -------------------------------------------------------------------
+# Fridge Detection Endpoints
+# -------------------------------------------------------------------
+@app.get("/fridge/info")
+def get_fridge_info():
+    """Report whether the fridge detector model is available."""
+    model_path = get_fridge_model_path()
+    return {
+        "available": model_path is not None,
+        "model_path": str(model_path) if model_path else None,
+        "endpoint": "/fridge/detect",
+    }
+
+
+@app.post("/fridge/detect")
+async def fridge_detect(
+    image: UploadFile = File(...),
+    conf: float = Form(0.25),
+):
+    """Run fridge item detection on an uploaded image."""
+    try:
+        items = detect_items_from_upload(image, conf=conf)
+        return {"items": items}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await image.close()
 
 
 # -------------------------------------------------------------------

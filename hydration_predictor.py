@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import joblib
 import json
 import os
@@ -54,6 +55,71 @@ class HydrationPredictor:
             
         except Exception as e:
             raise RuntimeError(f"Failed to load hydration models: {e}")
+    
+    def perform_eda(self, csv_path='hydration_data.csv'):
+        """
+        Perform Exploratory Data Analysis on hydration dataset
+        
+        Args:
+            csv_path: Path to the hydration data CSV file
+        """
+        print("\n" + "=" * 70)
+        print("📊 EXPLORATORY DATA ANALYSIS (EDA)")
+        print("=" * 70)
+        
+        try:
+            df = pd.read_csv(csv_path)
+        except FileNotFoundError:
+            print(f"\n❌ Error: {csv_path} not found!")
+            return
+        
+        # 1. Dataset Overview & Missing Values
+        print("\n1️⃣  DATASET OVERVIEW")
+        print("-" * 70)
+        print(f"   • Total records: {len(df)}")
+        print(f"   • Total features: {len(df.columns)}")
+        print(f"   • Features: {', '.join(df.columns)}")
+        print(f"\n   Missing values:")
+        missing = df.isnull().sum()
+        if missing.sum() == 0:
+            print("      ✓ No missing values detected")
+        else:
+            for col, count in missing[missing > 0].items():
+                print(f"      • {col}: {count} ({count/len(df)*100:.1f}%)")
+        
+        # 2. Feature Distribution
+        print(f"\n2️⃣  FEATURE DISTRIBUTION")
+        print("-" * 70)
+        
+        # Categorical features
+        categorical_cols = ['workout_type', 'season']
+        for col in categorical_cols:
+            if col in df.columns:
+                print(f"\n   {col}:")
+                value_counts = df[col].value_counts()
+                for val, count in value_counts.items():
+                    percentage = (count / len(df)) * 100
+                    bar = "█" * int(percentage / 2)
+                    print(f"      • {val:<30} {count:>3} ({percentage:>5.1f}%) {bar}")
+        
+        # 3. Basic Statistics
+        print(f"\n3️⃣  BASIC STATISTICS")
+        print("-" * 70)
+        
+        # Numerical features
+        numerical_cols = ['age', 'weight', 'height', 'humidity', 'temperature', 
+                         'workout_duration', 'total_intake']
+        
+        for col in numerical_cols:
+            if col in df.columns:
+                print(f"\n   {col}:")
+                print(f"      • Mean: {df[col].mean():.1f}")
+                print(f"      • Range: {df[col].min():.0f} - {df[col].max():.0f}")
+                if col == 'total_intake':
+                    print(f"      • Median: {df[col].median():.0f}")
+                    print(f"      • Std Dev: {df[col].std():.1f}")
+        
+        print("\n" + "=" * 70)
     
     def get_valid_workout_goals(self):
         """Get list of valid workout goals"""
@@ -309,11 +375,16 @@ class HydrationPredictor:
 
 # Example usage and testing
 if __name__ == "__main__":
-    import pandas as pd
     from sklearn.model_selection import train_test_split
     
     # Initialize predictor
     predictor = HydrationPredictor(model_dir="model")
+    
+    # Perform EDA first
+    print("\n" + "="*70)
+    print("         PERFORMING EXPLORATORY DATA ANALYSIS")
+    print("="*70)
+    predictor.perform_eda('hydration_data.csv')
     
     # Example: Single prediction
     print("\n🔮 Single Prediction Example:")

@@ -84,6 +84,64 @@ class DietPlanPredictor:
             else:
                 return "Balanced Plan"
     
+    def perform_eda(self):
+        """Simple Exploratory Data Analysis"""
+        print("\n" + "=" * 70)
+        print("📊 EXPLORATORY DATA ANALYSIS (EDA)")
+        print("=" * 70)
+        
+        # Read fresh data for EDA (before categorization)
+        df_original = pd.read_csv(self.csv_path)
+        
+        # 1. Dataset Overview & Missing Values
+        print("\n1️⃣  DATASET OVERVIEW")
+        print("-" * 70)
+        print(f"   • Total records: {len(df_original)}")
+        print(f"   • Total features: {len(df_original.columns)}")
+        print(f"   • Features: {', '.join(df_original.columns)}")
+        print(f"\n   Missing values:")
+        missing = df_original.isnull().sum()
+        if missing.sum() == 0:
+            print("      ✓ No missing values detected")
+        else:
+            for col, count in missing[missing > 0].items():
+                print(f"      • {col}: {count} ({count/len(df_original)*100:.1f}%)")
+        
+        # 2. Feature Distribution
+        print(f"\n2️⃣  FEATURE DISTRIBUTION")
+        print("-" * 70)
+        
+        categorical_cols = [self.gender_col, self.goal_col, self.bmi_col]
+        for col in categorical_cols:
+            if col in df_original.columns:
+                print(f"\n   {col}:")
+                value_counts = df_original[col].value_counts()
+                for val, count in value_counts.items():
+                    percentage = (count / len(df_original)) * 100
+                    bar = "█" * int(percentage / 2)
+                    print(f"      • {val:<30} {count:>3} ({percentage:>5.1f}%) {bar}")
+        
+        # 3. Basic Statistics
+        print(f"\n3️⃣  BASIC STATISTICS")
+        print("-" * 70)
+        
+        # Extract calories for analysis
+        df_original['Calories'] = df_original[self.meal_col].apply(self._extract_total_calories)
+        
+        print(f"\n   Weight ({self.weight_col}):")
+        print(f"      • Mean: {df_original[self.weight_col].mean():.1f} kg")
+        print(f"      • Range: {df_original[self.weight_col].min():.0f} - {df_original[self.weight_col].max():.0f} kg")
+        
+        print(f"\n   Height ({self.height_col}):")
+        print(f"      • Mean: {df_original[self.height_col].mean():.1f} cm")
+        print(f"      • Range: {df_original[self.height_col].min():.0f} - {df_original[self.height_col].max():.0f} cm")
+        
+        print(f"\n   Calories:")
+        print(f"      • Mean: {df_original['Calories'].mean():.0f} cal")
+        print(f"      • Range: {df_original['Calories'].min():.0f} - {df_original['Calories'].max():.0f} cal")
+        
+        print("\n" + "=" * 70)
+    
     def _load_and_preprocess_data(self):
         """Load CSV and create categorized meal plans"""
         print("=" * 70)
@@ -397,11 +455,14 @@ class DietPlanPredictor:
 
 # Example usage and testing
 if __name__ == "__main__":
-    print("\n🎯 DIET PLAN PREDICTOR - HIGH ACCURACY VERSION")
+    print("\n🎯 DIET PLAN PREDICTOR")
     print("=" * 70)
     
-    # Initialize and train
+    # Initialize and perform EDA
     predictor = DietPlanPredictor('diet_data.csv')
+    predictor.perform_eda()
+    
+    # Train model
     accuracy = predictor.train_models()
     
     # Example predictions
@@ -427,5 +488,5 @@ if __name__ == "__main__":
         print(f"   → Meal Plan: {result['meal_plan'][:100]}...")  # Show first 100 chars
     
     print("\n" + "=" * 70)
-    print("✅ Diet predictor ready for FastAPI integration!")
+    print("✅ Diet predictor ready!")
     print("=" * 70 + "\n")

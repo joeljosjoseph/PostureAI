@@ -1,0 +1,13 @@
+{
+  "model": "RandomForestClassifier",
+  "train_rows": 80000,
+  "n_classes": 4,
+  "holdout_accuracy": 1.0,
+  "features": [
+    "Gender",
+    "Goal",
+    "BMI Category",
+    "bmi"
+  ],
+  "data_source": "data/GYM.csv"
+}
