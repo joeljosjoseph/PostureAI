@@ -1,0 +1,13 @@
+path: FridgeVision.yolov8
+train: train/images
+val: valid/images
+
+nc: 34
+names: ['apple', 'banana', 'beef ', 'blueberries', 'bread', 'broccoli', 'butter', 'carrot', 'cheese', 'chicken', 'chocolate', 'corn', 'eggs', 'flour', 'goat_cheese', 'green_beans', 'ground_beef', 'ham', 'heavy_cream', 'lemon', 'mayonaise', 'milk', 'mushrooms', 'natural_yoghurt', 'onion', 'orange', 'pepper', 'potato', 'shrimp', 'spinach', 'strawberries', 'sugar', 'sweet_potato', 'tomato']
+
+roboflow:
+  workspace: anays-workspace-re5on
+  project: anays-workspace-re5on
+  version: dataset
+  license: Private
+  url: https://app.roboflow.com/anays-workspace-re5on/anays-workspace-re5on/dataset

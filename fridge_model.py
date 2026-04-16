@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import pathlib
 import shutil
 import tempfile
@@ -27,6 +28,48 @@ MODEL_CANDIDATES = [
     Path(__file__).resolve().parent / "model" / "best.pt",
     Path(__file__).resolve().parent / "backend" / "runs" / "detect" / "smart_fridge_train" / "weights" / "best.pt",
 ]
+
+DATASET_CONFIG_CANDIDATES = [
+    Path(__file__).resolve().parent / "FridgeVision.yolov8" / "data.local.yaml",
+    Path(__file__).resolve().parent / "FridgeVision.yolov8" / "data.yaml",
+]
+
+
+def get_fridge_dataset_config_path() -> Path | None:
+    for candidate in DATASET_CONFIG_CANDIDATES:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def get_fridge_dataset_info() -> dict[str, object]:
+    config_path = get_fridge_dataset_config_path()
+    if config_path is None:
+        return {"available": False, "config_path": None, "class_names": []}
+
+    class_names: list[str] = []
+    base_path: str | None = None
+
+    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line.startswith("path:"):
+            base_path = line.split(":", 1)[1].strip()
+        elif line.startswith("names:"):
+            names_literal = line.split(":", 1)[1].strip()
+            parsed = ast.literal_eval(names_literal)
+            class_names = [str(name).strip() for name in parsed]
+
+    dataset_root = config_path.parent
+    if base_path:
+        dataset_root = (Path(__file__).resolve().parent / base_path).resolve()
+
+    return {
+        "available": True,
+        "config_path": str(config_path),
+        "dataset_root": str(dataset_root),
+        "class_count": len(class_names),
+        "class_names": class_names,
+    }
 
 
 def get_fridge_model_path() -> Path | None:

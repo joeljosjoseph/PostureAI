@@ -1,0 +1,8 @@
+# Ultralytics resolves `path` relative to the process cwd (not this file's folder).
+# Run training from the project root, or the script chdirs there first.
+path: FridgeVision.yolov8
+train: train/images
+val: valid/images
+
+nc: 34
+names: ['apple', 'banana', 'beef ', 'blueberries', 'bread', 'broccoli', 'butter', 'carrot', 'cheese', 'chicken', 'chocolate', 'corn', 'eggs', 'flour', 'goat_cheese', 'green_beans', 'ground_beef', 'ham', 'heavy_cream', 'lemon', 'mayonaise', 'milk', 'mushrooms', 'natural_yoghurt', 'onion', 'orange', 'pepper', 'potato', 'shrimp', 'spinach', 'strawberries', 'sugar', 'sweet_potato', 'tomato']

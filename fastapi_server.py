@@ -22,7 +22,11 @@ from diet_plan_predictor import DietPlanPredictor
 from hydration_predictor import HydrationPredictor
 from _bmi import bmi_category as classify_bmi
 from diet_model import predict_gym_plan
-from fridge_model import detect_items_from_upload, get_fridge_model_path
+from fridge_model import (
+    detect_items_from_upload,
+    get_fridge_dataset_info,
+    get_fridge_model_path,
+)
 
 # -------------------------------------------------------------------
 # config
@@ -618,10 +622,12 @@ async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(..
 def get_fridge_info():
     """Report whether the fridge detector model is available."""
     model_path = get_fridge_model_path()
+    dataset_info = get_fridge_dataset_info()
     return {
         "available": model_path is not None,
         "model_path": str(model_path) if model_path else None,
         "endpoint": "/fridge/detect",
+        "dataset": dataset_info,
     }
 
 
