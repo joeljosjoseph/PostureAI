@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import ast
+import os
 import pathlib
 import shutil
 import tempfile
+from functools import lru_cache
 from collections import Counter
 from pathlib import Path
 
@@ -23,15 +25,31 @@ def _patch_path_exists_for_ultralytics() -> None:
 
 _patch_path_exists_for_ultralytics()
 
+BASE_DIR = Path(__file__).resolve().parent
+RUNTIME_DIR = BASE_DIR / ".runtime"
+
+
+def _configure_ultralytics_env() -> None:
+    """Keep Ultralytics config inside the project to avoid Windows permission issues."""
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("YOLO_CONFIG_DIR", str(RUNTIME_DIR))
+
+
+_configure_ultralytics_env()
+
 MODEL_CANDIDATES = [
-    Path(__file__).resolve().parent / "model" / "fridge_best.pt",
-    Path(__file__).resolve().parent / "model" / "best.pt",
-    Path(__file__).resolve().parent / "backend" / "runs" / "detect" / "smart_fridge_train" / "weights" / "best.pt",
+    BASE_DIR / "models" / "fridge_best.pt",
+    BASE_DIR / "models" / "best.pt",
+    BASE_DIR / "model" / "fridge_best.pt",
+    BASE_DIR / "model" / "best.pt",
+    BASE_DIR / "best.pt",
+    BASE_DIR / "yolov8n.pt",
+    BASE_DIR / "backend" / "runs" / "detect" / "smart_fridge_train" / "weights" / "best.pt",
 ]
 
 DATASET_CONFIG_CANDIDATES = [
-    Path(__file__).resolve().parent / "FridgeVision.yolov8" / "data.local.yaml",
-    Path(__file__).resolve().parent / "FridgeVision.yolov8" / "data.yaml",
+    BASE_DIR / "FridgeVision.yolov8" / "data.local.yaml",
+    BASE_DIR / "FridgeVision.yolov8" / "data.yaml",
 ]
 
 
@@ -61,7 +79,7 @@ def get_fridge_dataset_info() -> dict[str, object]:
 
     dataset_root = config_path.parent
     if base_path:
-        dataset_root = (Path(__file__).resolve().parent / base_path).resolve()
+        dataset_root = (BASE_DIR / base_path).resolve()
 
     return {
         "available": True,
@@ -76,7 +94,48 @@ def get_fridge_model_path() -> Path | None:
     for candidate in MODEL_CANDIDATES:
         if candidate.is_file():
             return candidate
+        unpacked = _resolve_unpacked_checkpoint(candidate)
+        if unpacked is not None:
+            return unpacked
     return None
+
+
+def _find_unpacked_checkpoint_root(candidate: Path) -> Path | None:
+    if not candidate.is_dir():
+        return None
+
+    nested = candidate / candidate.stem
+    if (nested / "data.pkl").is_file():
+        return nested
+    if (candidate / "data.pkl").is_file():
+        return candidate
+    return None
+
+
+@lru_cache(maxsize=8)
+def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
+    checkpoint_root = _find_unpacked_checkpoint_root(candidate)
+    if checkpoint_root is None:
+        return None
+
+    cache_dir = RUNTIME_DIR / "repacked"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    repacked_path = cache_dir / f"{candidate.stem}.pt"
+
+    if repacked_path.is_file():
+        return repacked_path
+
+    archive_base = cache_dir / candidate.stem
+    zip_path = Path(
+        shutil.make_archive(
+            str(archive_base),
+            "zip",
+            root_dir=str(checkpoint_root.parent),
+            base_dir=checkpoint_root.name,
+        )
+    )
+    shutil.copyfile(zip_path, repacked_path)
+    return repacked_path
 
 
 def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, int | str]]:
