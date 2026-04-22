@@ -27,6 +27,7 @@ _patch_path_exists_for_ultralytics()
 
 BASE_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = BASE_DIR / ".runtime"
+MODEL_PATH_ENV_VARS = ("FRIDGE_MODEL_PATH", "YOLO_MODEL_PATH")
 
 
 def _configure_ultralytics_env() -> None:
@@ -91,6 +92,22 @@ def get_fridge_dataset_info() -> dict[str, object]:
 
 
 def get_fridge_model_path() -> Path | None:
+    for env_var in MODEL_PATH_ENV_VARS:
+        raw_path = os.getenv(env_var, "").strip()
+        if not raw_path:
+            continue
+
+        candidate = Path(raw_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = (BASE_DIR / candidate).resolve()
+
+        if candidate.is_file():
+            return candidate
+
+        unpacked = _resolve_unpacked_checkpoint(candidate)
+        if unpacked is not None:
+            return unpacked
+
     for candidate in MODEL_CANDIDATES:
         if candidate.is_file():
             return candidate
@@ -98,6 +115,21 @@ def get_fridge_model_path() -> Path | None:
         if unpacked is not None:
             return unpacked
     return None
+
+
+def get_fridge_model_debug_info() -> dict[str, object]:
+    env_values: dict[str, str | None] = {}
+    for env_var in MODEL_PATH_ENV_VARS:
+        raw_value = os.getenv(env_var, "").strip()
+        env_values[env_var] = raw_value or None
+
+    model_path = get_fridge_model_path()
+    return {
+        "available": model_path is not None,
+        "resolved_model_path": str(model_path) if model_path else None,
+        "env_vars": env_values,
+        "candidate_paths": [str(path) for path in MODEL_CANDIDATES],
+    }
 
 
 def _find_unpacked_checkpoint_root(candidate: Path) -> Path | None:
@@ -142,7 +174,7 @@ def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, 
     model_path = get_fridge_model_path()
     if model_path is None:
         raise FileNotFoundError(
-            "Fridge model not found. Expected one of: "
+            "Fridge model not found. Set FRIDGE_MODEL_PATH or place the checkpoint at one of: "
             + ", ".join(str(path) for path in MODEL_CANDIDATES)
         )
     try:

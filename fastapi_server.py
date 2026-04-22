@@ -25,7 +25,7 @@ from diet_model import predict_gym_plan
 from fridge_model import (
     detect_items_from_upload,
     get_fridge_dataset_info,
-    get_fridge_model_path,
+    get_fridge_model_debug_info,
 )
 
 # -------------------------------------------------------------------
@@ -328,6 +328,11 @@ async def startup_event():
     _load_ml_model()
     _load_diet_predictor()
     _load_hydration_predictor()
+    fridge_info = get_fridge_model_debug_info()
+    if fridge_info["available"]:
+        print(f"Fridge model ready: {fridge_info['resolved_model_path']}")
+    else:
+        print("Fridge model unavailable. Configure FRIDGE_MODEL_PATH or deploy a checkpoint.")
 
 
 # -------------------------------------------------------------------
@@ -338,6 +343,10 @@ def root():
     """API root endpoint"""
     return {
         "message": "PostureAI API with Diet Plan and Hydration Predictor",
+        "runtime": {
+            "port_env": os.getenv("PORT"),
+            "fridge_model_env": os.getenv("FRIDGE_MODEL_PATH") or os.getenv("YOLO_MODEL_PATH"),
+        },
         "endpoints": {
             "posture": ["/create_session", "/analyze", "/reset_session"],
             "diet": ["/diet/info", "/diet/predict", "/diet/calculate-bmi"],
@@ -621,11 +630,13 @@ async def calculate_bmi(weight_kg: float = Form(...), height_cm: float = Form(..
 @app.get("/fridge/info")
 def get_fridge_info():
     """Report whether the fridge detector model is available."""
-    model_path = get_fridge_model_path()
     dataset_info = get_fridge_dataset_info()
+    model_info = get_fridge_model_debug_info()
     return {
-        "available": model_path is not None,
-        "model_path": str(model_path) if model_path else None,
+        "available": model_info["available"],
+        "model_path": model_info["resolved_model_path"],
+        "model_env": model_info["env_vars"],
+        "candidate_paths": model_info["candidate_paths"],
         "endpoint": "/fridge/detect",
         "dataset": dataset_info,
     }
@@ -709,4 +720,4 @@ async def predict_hydration(request: HydrationRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
