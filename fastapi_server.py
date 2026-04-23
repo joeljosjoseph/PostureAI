@@ -57,7 +57,18 @@ def _get_cv2():
             import cv2
         except ImportError as exc:
             missing_name = getattr(exc, "name", "cv2")
-            raise RuntimeError(f"{missing_name} is not available for posture analysis: {exc}") from exc
+            hint = ""
+            exc_text = str(exc)
+            if ".so" in exc_text or "cannot open shared object file" in exc_text:
+                hint = (
+                    " Missing Linux system libraries for OpenCV. "
+                    "If this is a Nixpacks deploy, ensure nixpacks.toml installs "
+                    "libgl1, libglib2.0-0, libsm6, libxext6, libxrender1, and libxcb1, "
+                    "then redeploy."
+                )
+            raise RuntimeError(
+                f"{missing_name} is not available for posture analysis: {exc}.{hint}"
+            ) from exc
         _CV2 = cv2
     return _CV2
 

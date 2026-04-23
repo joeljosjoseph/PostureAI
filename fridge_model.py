@@ -240,17 +240,30 @@ def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
 
 @lru_cache(maxsize=1)
 def _load_yolo_model(model_path_str: str):
+    def _dependency_error(exc: ImportError, package_name: str) -> RuntimeError:
+        missing_name = getattr(exc, "name", package_name)
+        hint = ""
+        exc_text = str(exc)
+        if ".so" in exc_text or "cannot open shared object file" in exc_text:
+            hint = (
+                " Missing Linux system libraries for OpenCV or a transitive dependency. "
+                "If this is a Nixpacks deploy, ensure nixpacks.toml installs "
+                "libgl1, libglib2.0-0, libsm6, libxext6, libxrender1, and libxcb1, "
+                "then redeploy."
+            )
+        return RuntimeError(
+            f"{missing_name} is not available, so the fridge model cannot run: {exc}.{hint}"
+        )
+
     try:
         import torch
     except ImportError as exc:
-        missing_name = getattr(exc, "name", "torch")
-        raise RuntimeError(f"{missing_name} is not installed, so the fridge model cannot run") from exc
+        raise _dependency_error(exc, "torch") from exc
 
     try:
         from ultralytics import YOLO
     except ImportError as exc:
-        missing_name = getattr(exc, "name", "ultralytics")
-        raise RuntimeError(f"{missing_name} is not installed, so the fridge model cannot run") from exc
+        raise _dependency_error(exc, "ultralytics") from exc
 
     torch.set_num_threads(1)
     if hasattr(torch, "set_num_interop_threads"):
