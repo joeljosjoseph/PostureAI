@@ -242,9 +242,15 @@ def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
 def _load_yolo_model(model_path_str: str):
     try:
         import torch
+    except ImportError as exc:
+        missing_name = getattr(exc, "name", "torch")
+        raise RuntimeError(f"{missing_name} is not installed, so the fridge model cannot run") from exc
+
+    try:
         from ultralytics import YOLO
     except ImportError as exc:
-        raise RuntimeError("ultralytics is not installed, so the fridge model cannot run") from exc
+        missing_name = getattr(exc, "name", "ultralytics")
+        raise RuntimeError(f"{missing_name} is not installed, so the fridge model cannot run") from exc
 
     torch.set_num_threads(1)
     if hasattr(torch, "set_num_interop_threads"):
