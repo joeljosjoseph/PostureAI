@@ -28,6 +28,10 @@ _patch_path_exists_for_ultralytics()
 BASE_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = BASE_DIR / ".runtime"
 MODEL_PATH_ENV_VARS = ("FRIDGE_MODEL_PATH", "YOLO_MODEL_PATH")
+PERSISTENT_MODEL_CANDIDATES = [
+    Path("/var/data/fridge_best.pt"),
+    Path("/var/data/best.pt"),
+]
 
 
 def _configure_ultralytics_env() -> None:
@@ -39,6 +43,7 @@ def _configure_ultralytics_env() -> None:
 _configure_ultralytics_env()
 
 MODEL_CANDIDATES = [
+    *PERSISTENT_MODEL_CANDIDATES,
     BASE_DIR / "models" / "fridge_best.pt",
     BASE_DIR / "models" / "best.pt",
     BASE_DIR / "model" / "fridge_best.pt",
@@ -46,6 +51,13 @@ MODEL_CANDIDATES = [
     BASE_DIR / "best.pt",
     BASE_DIR / "yolov8n.pt",
     BASE_DIR / "backend" / "runs" / "detect" / "smart_fridge_train" / "weights" / "best.pt",
+]
+
+BUNDLED_MODEL_SOURCES = [
+    BASE_DIR / "models" / "fridge_best.pt",
+    BASE_DIR / "models" / "best.pt",
+    BASE_DIR / "best.pt",
+    RUNTIME_DIR / "repacked" / "best.pt",
 ]
 
 DATASET_CONFIG_CANDIDATES = [
@@ -92,6 +104,8 @@ def get_fridge_dataset_info() -> dict[str, object]:
 
 
 def get_fridge_model_path() -> Path | None:
+    _seed_persistent_model_if_needed()
+
     for env_var in MODEL_PATH_ENV_VARS:
         raw_path = os.getenv(env_var, "").strip()
         if not raw_path:
@@ -144,6 +158,63 @@ def _find_unpacked_checkpoint_root(candidate: Path) -> Path | None:
     return None
 
 
+def _build_repacked_checkpoint(checkpoint_root: Path, output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    archive_base = output_path.parent / output_path.stem
+    zip_path = Path(
+        shutil.make_archive(
+            str(archive_base),
+            "zip",
+            root_dir=str(checkpoint_root.parent),
+            base_dir=checkpoint_root.name,
+        )
+    )
+    shutil.copyfile(zip_path, output_path)
+    return output_path
+
+
+def _get_bundled_model_file() -> Path | None:
+    for candidate in BUNDLED_MODEL_SOURCES:
+        if candidate.is_file():
+            return candidate
+        unpacked = _find_unpacked_checkpoint_root(candidate)
+        if unpacked is not None:
+            return _build_repacked_checkpoint(unpacked, RUNTIME_DIR / "repacked" / f"{candidate.stem}.pt")
+    return None
+
+
+def _seed_persistent_model_if_needed() -> None:
+    target_paths: list[Path] = []
+
+    for env_var in MODEL_PATH_ENV_VARS:
+        raw_path = os.getenv(env_var, "").strip()
+        if not raw_path:
+            continue
+        candidate = Path(raw_path).expanduser()
+        if candidate.is_absolute():
+            target_paths.append(candidate)
+
+    for candidate in PERSISTENT_MODEL_CANDIDATES:
+        if candidate not in target_paths:
+            target_paths.append(candidate)
+
+    source_file = _get_bundled_model_file()
+    if source_file is None:
+        return
+
+    for target in target_paths:
+        if target.exists() or target.suffix.lower() != ".pt":
+            continue
+        if not target.parent.exists():
+            continue
+        try:
+            shutil.copyfile(source_file, target)
+            return
+        except OSError:
+            continue
+
+
 @lru_cache(maxsize=8)
 def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
     checkpoint_root = _find_unpacked_checkpoint_root(candidate)
@@ -157,17 +228,7 @@ def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
     if repacked_path.is_file():
         return repacked_path
 
-    archive_base = cache_dir / candidate.stem
-    zip_path = Path(
-        shutil.make_archive(
-            str(archive_base),
-            "zip",
-            root_dir=str(checkpoint_root.parent),
-            base_dir=checkpoint_root.name,
-        )
-    )
-    shutil.copyfile(zip_path, repacked_path)
-    return repacked_path
+    return _build_repacked_checkpoint(checkpoint_root, repacked_path)
 
 
 def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, int | str]]:
