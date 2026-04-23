@@ -56,7 +56,8 @@ def _get_cv2():
         try:
             import cv2
         except ImportError as exc:
-            raise RuntimeError("OpenCV is not available for posture analysis") from exc
+            missing_name = getattr(exc, "name", "cv2")
+            raise RuntimeError(f"{missing_name} is not available for posture analysis: {exc}") from exc
         _CV2 = cv2
     return _CV2
 
@@ -67,7 +68,8 @@ def _get_mp_pose():
         try:
             import mediapipe as mp
         except ImportError as exc:
-            raise RuntimeError("MediaPipe is not available for posture analysis") from exc
+            missing_name = getattr(exc, "name", "mediapipe")
+            raise RuntimeError(f"{missing_name} is not available for posture analysis: {exc}") from exc
         _MP_POSE = mp.solutions.pose
     return _MP_POSE
 
