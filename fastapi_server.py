@@ -5,12 +5,10 @@ import time
 import math
 import warnings
 from collections import deque
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
-import cv2
 import joblib
-import mediapipe as mp
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -39,12 +37,6 @@ HYDRATION_MODEL_DIR = os.path.join(BASE_DIR, "model")
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
-# -------------------------------------------------------------------
-# Mediapipe
-# -------------------------------------------------------------------
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
-
 # smoothing
 ANGLE_HISTORY_LEN = 5
 
@@ -54,6 +46,41 @@ ANGLE_HISTORY_LEN = 5
 _ML_MODEL = None
 _ML_CLASS_NAMES = None
 _FEATURE_INDEXES = [11, 13, 15, 23, 25, 27]  # shoulders, wrists, hips, knees
+_CV2 = None
+_MP_POSE = None
+
+
+def _get_cv2():
+    global _CV2
+    if _CV2 is None:
+        try:
+            import cv2
+        except ImportError as exc:
+            raise RuntimeError("OpenCV is not available for posture analysis") from exc
+        _CV2 = cv2
+    return _CV2
+
+
+def _get_mp_pose():
+    global _MP_POSE
+    if _MP_POSE is None:
+        try:
+            import mediapipe as mp
+        except ImportError as exc:
+            raise RuntimeError("MediaPipe is not available for posture analysis") from exc
+        _MP_POSE = mp.solutions.pose
+    return _MP_POSE
+
+
+def _create_pose_instance():
+    mp_pose = _get_mp_pose()
+    return mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=1,
+        enable_segmentation=False,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    )
 
 
 def _load_ml_model():
@@ -366,9 +393,10 @@ def create_session(workout_name: Optional[str] = Form("Manual"),
                    target_reps: Optional[int] = Form(0)):
     session_id = str(uuid.uuid4())
     repc = RepCounter(workout_name)
-    # create a Mediapipe Pose instance per session (lightweight)
-    pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
-                        min_detection_confidence=0.5, min_tracking_confidence=0.5)
+    try:
+        pose = _create_pose_instance()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     SESSIONS[session_id] = {
         "rep_counter": repc,
         "workout_name": workout_name,
@@ -395,6 +423,11 @@ async def analyze(file: UploadFile = File(...),
       - mode: "auto" or "manual"
       - target_reps: optional int
     """
+    try:
+        cv2 = _get_cv2()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -411,8 +444,10 @@ async def analyze(file: UploadFile = File(...),
     elif session_id and session_id not in SESSIONS:
         # create session with defaults
         repc = RepCounter(workout_name or "Manual")
-        pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
-                            min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        try:
+            pose = _create_pose_instance()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         session = {
             "rep_counter": repc,
             "workout_name": workout_name or "Manual",
@@ -427,8 +462,10 @@ async def analyze(file: UploadFile = File(...),
     # fallback if no session
     if session is None:
         repc = RepCounter(workout_name or "Manual")
-        pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
-                            min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        try:
+            pose = _create_pose_instance()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         session = {
             "rep_counter": repc,
             "workout_name": workout_name or "Manual",
