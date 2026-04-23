@@ -35,8 +35,8 @@ PERSISTENT_MODEL_CANDIDATES = [
     Path("/var/data/fridge_best.pt"),
     Path("/var/data/best.pt"),
 ]
-DEFAULT_INFERENCE_IMGSZ = int(os.getenv("FRIDGE_INFERENCE_IMGSZ", "640"))
-DEFAULT_MAX_IMAGE_DIMENSION = int(os.getenv("FRIDGE_MAX_IMAGE_DIMENSION", "1280"))
+DEFAULT_INFERENCE_IMGSZ = int(os.getenv("FRIDGE_INFERENCE_IMGSZ", "320"))
+DEFAULT_MAX_IMAGE_DIMENSION = int(os.getenv("FRIDGE_MAX_IMAGE_DIMENSION", "640"))
 
 
 def _configure_ultralytics_env() -> None:
@@ -241,9 +241,14 @@ def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
 @lru_cache(maxsize=1)
 def _load_yolo_model(model_path_str: str):
     try:
+        import torch
         from ultralytics import YOLO
     except ImportError as exc:
         raise RuntimeError("ultralytics is not installed, so the fridge model cannot run") from exc
+
+    torch.set_num_threads(1)
+    if hasattr(torch, "set_num_interop_threads"):
+        torch.set_num_interop_threads(1)
 
     return YOLO(model_path_str)
 
@@ -276,23 +281,23 @@ def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, 
             + ", ".join(str(path) for path in MODEL_CANDIDATES)
         )
     temp_path = _prepare_upload_for_inference(upload_file)
-    results = None
     result = None
+    result_stream = None
 
     try:
         model = _load_yolo_model(str(model_path))
-        results = model.predict(
+        result_stream = model.predict(
             source=str(temp_path),
             conf=conf,
             imgsz=DEFAULT_INFERENCE_IMGSZ,
             device="cpu",
+            stream=True,
             max_det=64,
             verbose=False,
         )
-        if not results:
+        result = next(iter(result_stream), None)
+        if result is None:
             return []
-
-        result = results[0]
         names = result.names
         counter = Counter()
 
@@ -307,7 +312,14 @@ def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, 
             for name, count in sorted(counter.items(), key=lambda item: item[0])
         ]
     finally:
+        try:
+            import torch
+            if hasattr(torch, "cuda") and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
         del result
-        del results
+        del result_stream
         gc.collect()
         temp_path.unlink(missing_ok=True)

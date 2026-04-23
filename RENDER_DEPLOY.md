@@ -8,8 +8,8 @@ This repo is ready to deploy to Render as a Python web service with `render.yaml
 - Render starts the API with `uvicorn fastapi_server:app --host 0.0.0.0 --port $PORT`
 - A persistent disk is mounted at `/var/data`
 - `FRIDGE_MODEL_PATH` defaults to `/var/data/best.pt`
-- fridge inference is capped with `FRIDGE_INFERENCE_IMGSZ=512`
-- uploaded fridge images are downscaled to `FRIDGE_MAX_IMAGE_DIMENSION=1024` before inference
+- fridge inference is capped with `FRIDGE_INFERENCE_IMGSZ=320`
+- uploaded fridge images are downscaled to `FRIDGE_MAX_IMAGE_DIMENSION=640` before inference
 - The API will auto-seed `/var/data/best.pt` from `models/best.pt` when the service starts
 - `/fridge/info` reports the resolved model path and environment settings
 
