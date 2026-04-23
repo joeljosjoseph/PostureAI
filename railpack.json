@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "python",
+  "packages": {
+    "python": "3.10.13"
+  },
+  "buildAptPackages": [
+    "libgl1",
+    "libglib2.0-0",
+    "libsm6",
+    "libxext6",
+    "libxrender1",
+    "libxcb1"
+  ],
+  "deploy": {
+    "aptPackages": [
+      "libgl1",
+      "libglib2.0-0",
+      "libsm6",
+      "libxext6",
+      "libxrender1",
+      "libxcb1"
+    ],
+    "startCommand": "uvicorn fastapi_server:app --host 0.0.0.0 --port $PORT"
+  }
+}
