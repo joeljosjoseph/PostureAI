@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import gc
 import os
 import pathlib
 import shutil
@@ -8,6 +9,8 @@ import tempfile
 from functools import lru_cache
 from collections import Counter
 from pathlib import Path
+
+from PIL import Image
 
 
 def _patch_path_exists_for_ultralytics() -> None:
@@ -32,6 +35,8 @@ PERSISTENT_MODEL_CANDIDATES = [
     Path("/var/data/fridge_best.pt"),
     Path("/var/data/best.pt"),
 ]
+DEFAULT_INFERENCE_IMGSZ = int(os.getenv("FRIDGE_INFERENCE_IMGSZ", "640"))
+DEFAULT_MAX_IMAGE_DIMENSION = int(os.getenv("FRIDGE_MAX_IMAGE_DIMENSION", "1280"))
 
 
 def _configure_ultralytics_env() -> None:
@@ -143,6 +148,8 @@ def get_fridge_model_debug_info() -> dict[str, object]:
         "resolved_model_path": str(model_path) if model_path else None,
         "env_vars": env_values,
         "candidate_paths": [str(path) for path in MODEL_CANDIDATES],
+        "inference_imgsz": DEFAULT_INFERENCE_IMGSZ,
+        "max_image_dimension": DEFAULT_MAX_IMAGE_DIMENSION,
     }
 
 
@@ -231,18 +238,17 @@ def _resolve_unpacked_checkpoint(candidate: Path) -> Path | None:
     return _build_repacked_checkpoint(checkpoint_root, repacked_path)
 
 
-def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, int | str]]:
-    model_path = get_fridge_model_path()
-    if model_path is None:
-        raise FileNotFoundError(
-            "Fridge model not found. Set FRIDGE_MODEL_PATH or place the checkpoint at one of: "
-            + ", ".join(str(path) for path in MODEL_CANDIDATES)
-        )
+@lru_cache(maxsize=1)
+def _load_yolo_model(model_path_str: str):
     try:
         from ultralytics import YOLO
     except ImportError as exc:
         raise RuntimeError("ultralytics is not installed, so the fridge model cannot run") from exc
 
+    return YOLO(model_path_str)
+
+
+def _prepare_upload_for_inference(upload_file) -> Path:
     suffix = Path(upload_file.filename or "upload.jpg").suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
         temp_path = Path(temp_file.name)
@@ -250,8 +256,39 @@ def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, 
         shutil.copyfileobj(upload_file.file, temp_file)
 
     try:
-        model = YOLO(str(model_path))
-        results = model.predict(source=str(temp_path), conf=conf, verbose=False)
+        with Image.open(temp_path) as image:
+            image = image.convert("RGB")
+            if max(image.size) > DEFAULT_MAX_IMAGE_DIMENSION:
+                image.thumbnail((DEFAULT_MAX_IMAGE_DIMENSION, DEFAULT_MAX_IMAGE_DIMENSION))
+                image.save(temp_path, format="JPEG", quality=90, optimize=True)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    return temp_path
+
+
+def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, int | str]]:
+    model_path = get_fridge_model_path()
+    if model_path is None:
+        raise FileNotFoundError(
+            "Fridge model not found. Set FRIDGE_MODEL_PATH or place the checkpoint at one of: "
+            + ", ".join(str(path) for path in MODEL_CANDIDATES)
+        )
+    temp_path = _prepare_upload_for_inference(upload_file)
+    results = None
+    result = None
+
+    try:
+        model = _load_yolo_model(str(model_path))
+        results = model.predict(
+            source=str(temp_path),
+            conf=conf,
+            imgsz=DEFAULT_INFERENCE_IMGSZ,
+            device="cpu",
+            max_det=64,
+            verbose=False,
+        )
         if not results:
             return []
 
@@ -270,4 +307,7 @@ def detect_items_from_upload(upload_file, conf: float = 0.25) -> list[dict[str, 
             for name, count in sorted(counter.items(), key=lambda item: item[0])
         ]
     finally:
+        del result
+        del results
+        gc.collect()
         temp_path.unlink(missing_ok=True)

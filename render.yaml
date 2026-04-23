@@ -12,6 +12,10 @@ services:
         value: /opt/render/project/src/.runtime
       - key: FRIDGE_MODEL_PATH
         value: /var/data/best.pt
+      - key: FRIDGE_INFERENCE_IMGSZ
+        value: 512
+      - key: FRIDGE_MAX_IMAGE_DIMENSION
+        value: 1024
       - key: PYTHONIOENCODING
         value: utf-8
     disk:
