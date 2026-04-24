@@ -1,5 +1,4 @@
 # fastapi_server.py
-import io
 import os
 import time
 import math
@@ -25,6 +24,7 @@ from fridge_model import (
     get_fridge_dataset_info,
     get_fridge_model_debug_info,
 )
+from _mediapipe_runtime import ensure_mediapipe_runtime_compatible
 
 # -------------------------------------------------------------------
 # config
@@ -39,6 +39,13 @@ warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 # smoothing
 ANGLE_HISTORY_LEN = 5
+BODY_CONNECTIONS = [
+    (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), (17, 19),
+    (12, 14), (14, 16), (16, 18), (16, 20), (16, 22), (18, 20),
+    (11, 23), (12, 24), (23, 24),
+    (23, 25), (25, 27), (27, 29), (29, 31),
+    (24, 26), (26, 28), (28, 30), (30, 32),
+]
 
 # -------------------------------------------------------------------
 # model loader (optional)
@@ -77,6 +84,7 @@ def _get_mp_pose():
     global _MP_POSE
     if _MP_POSE is None:
         try:
+            ensure_mediapipe_runtime_compatible()
             import mediapipe as mp
         except ImportError as exc:
             missing_name = getattr(exc, "name", "mediapipe")
@@ -206,6 +214,81 @@ def compute_angle(a, b, c):
 
 def calories_from_reps(reps):
     return round(reps * 0.25, 1)
+
+
+def _landmark_to_point(landmarks, idx, width, height, visibility_threshold=0.5):
+    lm = landmarks.landmark[idx]
+    if getattr(lm, "visibility", 1.0) < visibility_threshold:
+        return None
+    return int(lm.x * width), int(lm.y * height)
+
+
+def build_pose_overlay_payload(landmarks, width, height):
+    """Return lightweight body-only coordinates for frontend rendering."""
+    if landmarks is None:
+        return {
+            "points": {},
+            "connections": [],
+            "excluded_landmarks": list(range(0, 11)),
+            "frame_size": {"width": width, "height": height},
+        }
+
+    points = {}
+    pixel_points = {}
+    for idx in range(11, 33):
+        lm = landmarks.landmark[idx]
+        points[str(idx)] = {
+            "x": lm.x,
+            "y": lm.y,
+            "visibility": getattr(lm, "visibility", None),
+        }
+        pixel = _landmark_to_point(landmarks, idx, width, height)
+        pixel_points[str(idx)] = (
+            {"x": pixel[0], "y": pixel[1]} if pixel else None
+        )
+
+    left_shoulder = points.get("11")
+    right_shoulder = points.get("12")
+    neck = None
+    neck_pixel = None
+    if left_shoulder and right_shoulder:
+        neck = {
+            "x": (left_shoulder["x"] + right_shoulder["x"]) / 2.0,
+            "y": (left_shoulder["y"] + right_shoulder["y"]) / 2.0,
+            "visibility": min(
+                left_shoulder.get("visibility", 1.0) or 0.0,
+                right_shoulder.get("visibility", 1.0) or 0.0,
+            ),
+        }
+        left_px = pixel_points.get("11")
+        right_px = pixel_points.get("12")
+        if left_px and right_px:
+            neck_pixel = {
+                "x": (left_px["x"] + right_px["x"]) // 2,
+                "y": (left_px["y"] + right_px["y"]) // 2,
+            }
+
+    if neck is not None:
+        points["neck"] = neck
+        pixel_points["neck"] = neck_pixel
+
+    connections = [
+        {"from": str(start_idx), "to": str(end_idx)}
+        for start_idx, end_idx in BODY_CONNECTIONS
+    ]
+    if neck is not None:
+        connections.extend([
+            {"from": "neck", "to": "11"},
+            {"from": "neck", "to": "12"},
+        ])
+
+    return {
+        "points": points,
+        "pixel_points": pixel_points,
+        "connections": connections,
+        "excluded_landmarks": list(range(0, 11)),
+        "frame_size": {"width": width, "height": height},
+    }
 
 
 class RepCounter:
@@ -531,16 +614,22 @@ async def analyze(file: UploadFile = File(...),
             reps = session["rep_counter"].update(angle)
             calories = calories_from_reps(reps)
 
-    message = get_form_message(detected_label if detected_label else (workout_name or session.get("workout_name", "Manual")), angle or 0)
+    display_workout = detected_label if detected_label else (workout_name or session.get("workout_name", "Manual"))
+    mode_text = "Auto-Detect (ML)" if use_auto else "Manual"
+    message = get_form_message(display_workout, angle or 0)
+    pose_overlay = build_pose_overlay_payload(landmarks, w, h)
 
     response = {
         "angle": angle,
         "reps": reps,
         "calories": calories,
         "detected_label": detected_label,
+        "display_workout": display_workout,
+        "mode_text": mode_text,
         "message": message,
         "fps": session.get("fps", 0.0),
         "session_id": session_id,
+        "pose_overlay": pose_overlay,
     }
 
     # check target

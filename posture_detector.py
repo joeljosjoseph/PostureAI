@@ -4,6 +4,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf"
 import cv2
 import mediapipe as mp
 import math
+from _mediapipe_runtime import ensure_mediapipe_runtime_compatible
+
+ensure_mediapipe_runtime_compatible()
 
 mp_pose = mp.solutions.pose
 

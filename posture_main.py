@@ -9,11 +9,15 @@ import numpy as np
 import mediapipe as mp
 import joblib
 
+from _mediapipe_runtime import ensure_mediapipe_runtime_compatible
+
 # -------------------------------------------------------------------
 #  Warning filters (protobuf + sklearn spam)
 # -------------------------------------------------------------------
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+
+ensure_mediapipe_runtime_compatible()
 
 # -------------------------------------------------------------------
 #  Paths & window constants
@@ -29,11 +33,17 @@ TARGET_H = 720
 #  Mediapipe pose
 # -------------------------------------------------------------------
 mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
-mp_style = mp.solutions.drawing_styles
 
 # For smoother angles & FPS
 ANGLE_HISTORY_LEN = 5
+
+BODY_CONNECTIONS = [
+    (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), (17, 19),
+    (12, 14), (14, 16), (16, 18), (16, 20), (16, 22), (18, 20),
+    (11, 23), (12, 24), (23, 24),
+    (23, 25), (25, 27), (27, 29), (29, 31),
+    (24, 26), (26, 28), (28, 30), (30, 32),
+]
 
 # -------------------------------------------------------------------
 #  Workout options (menu)
@@ -99,6 +109,45 @@ def compute_angle(a, b, c):
 def calories_from_reps(reps):
     """Very rough estimation: each rep ~0.25 kcal."""
     return round(reps * 0.25, 1)
+
+
+def _landmark_to_point(landmarks, idx, width, height, visibility_threshold=0.5):
+    lm = landmarks.landmark[idx]
+    if getattr(lm, "visibility", 1.0) < visibility_threshold:
+        return None
+    return int(lm.x * width), int(lm.y * height)
+
+
+def draw_body_without_face(frame, landmarks):
+    """Draw pose landmarks for the body only, ending at a synthetic neck point."""
+    h, w, _ = frame.shape
+    points = {idx: _landmark_to_point(landmarks, idx, w, h) for idx in range(11, 33)}
+
+    for start_idx, end_idx in BODY_CONNECTIONS:
+        start = points.get(start_idx)
+        end = points.get(end_idx)
+        if start and end:
+            cv2.line(frame, start, end, (0, 220, 255), 2, lineType=cv2.LINE_AA)
+
+    left_shoulder = points.get(11)
+    right_shoulder = points.get(12)
+    neck = None
+    if left_shoulder and right_shoulder:
+        neck = (
+            (left_shoulder[0] + right_shoulder[0]) // 2,
+            (left_shoulder[1] + right_shoulder[1]) // 2,
+        )
+        cv2.line(frame, neck, left_shoulder, (0, 220, 255), 2, lineType=cv2.LINE_AA)
+        cv2.line(frame, neck, right_shoulder, (0, 220, 255), 2, lineType=cv2.LINE_AA)
+
+    for point in points.values():
+        if point:
+            cv2.circle(frame, point, 4, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+            cv2.circle(frame, point, 6, (0, 140, 255), 1, lineType=cv2.LINE_AA)
+
+    if neck:
+        cv2.circle(frame, neck, 5, (255, 255, 255), -1, lineType=cv2.LINE_AA)
+        cv2.circle(frame, neck, 7, (0, 200, 255), 1, lineType=cv2.LINE_AA)
 
 
 # -------------------------------------------------------------------
@@ -395,12 +444,7 @@ def main():
         angle = None
 
         if landmarks:
-            mp_drawing.draw_landmarks(
-                frame,
-                landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp_style.get_default_pose_landmarks_style(),
-            )
+            draw_body_without_face(frame, landmarks)
 
             if auto_mode:
                 detected_label = ml_predict_from_landmarks(landmarks, w, h) or ""
